@@ -1,3 +1,6 @@
+#CREATE USER 'Junior'@'localhost' IDENTIFIED WITH mysql_native_password BY 'Juka9999';
+#GRANT ALL PRIVILEGES ON *.* TO 'Junior'@'localhost' WITH GRANT OPTION;
+
 #SHOW DATABASES;
 #CREATE DATABASE escola_express;
 #USE escola_express;
