@@ -6,27 +6,10 @@ var logger = require('morgan');
 
 var indexRouter = require('./routes/index');
 var usersRouter = require('./routes/users');
+var ActivityRouter = require('./routes/school-activity');
+var UsersActivityRouter = require('./routes/users-activity');
 
 var app = express();
-
-const mysql = require('mysql');
-
-const connection = mysql.createConnection({
-  host: 'localhost',
-  user: 'Junior',
-  password: 'Juka9999',
-  database: 'escola_express'
-});
-
-connection.connect((err) => {
-  if (err) {
-    console.error('Erro ao conectar ao MySQL:', err);
-    return;
-  }
-  console.log('Conexão com MySQL estabelecida com sucesso');
-});
-
-module.exports = connection;
 
 // view engine setup
 app.set('views', path.join(__dirname, 'views'));
@@ -40,6 +23,8 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 app.use('/', indexRouter);
 app.use('/users', usersRouter);
+app.use('/school-activity', ActivityRouter);
+app.use('/users-activity', UsersActivityRouter);
 
 // catch 404 and forward to error handler
 app.use(function(req, res, next) {
