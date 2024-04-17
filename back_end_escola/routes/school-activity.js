@@ -17,7 +17,7 @@ router.post('/', function (req, res, next) {
 });
 
 router.get('/all-activity', function (req, res, next) {
-    connection.query('SELECT * FROM ATIVIDADE', function (error, results, fields) {
+    connection.query('SELECT * FROM ATIVIDADE WHERE desabilitado = FALSE', function (error, results, fields) {
       if(error) {
         console.log("Erro ao buscar atividades: ", error);
         res.status(500).send("Erro ao buscar atividades.");
@@ -50,19 +50,77 @@ router.get('/:id', function (req, res, next) {
 });
 
 router.put('/:id', function (req, res, next) {
-  const atividadeId = req.params.id;
-  const { titulo, descricao, data } = req.body;
+  const activityId = req.params.id;
+  const { titulo, descricao, data, desabilitado } = req.body;
 
-  connection.query('UPDATE ATIVIDADE SET titulo = ?, descricao = ?, data = ? WHERE id = ?', [titulo, descricao, data, atividadeId], function (error, results, fields) {
+  let updates = [];
+  let params = [];
+
+  if (titulo) {
+    updates.push('titulo = ?');
+    params.push(titulo);
+  }
+
+  if (descricao) {
+    updates.push('descricao = ?');
+    params.push(descricao);
+  }
+
+  if (data) {
+    updates.push('data = ?');
+    params.push(data);
+  }
+
+  if (desabilitado !== undefined) {
+    updates.push('desabilitado = ?');
+    params.push(desabilitado);
+  }
+
+  if (updates.length === 0) {
+    res.status(400).send("Nenhum campo fornecido para atualização.");
+    return;
+  }
+
+  params.push(activityId);
+
+  const sql = `UPDATE ATIVIDADE SET ${updates.join(', ')} WHERE id = ?`;
+
+  connection.query(sql, params, function (error, results, fields) {
     if (error) {
-      console.log("Erro ao atualizar atividade: ", error);
-      res.status(500).send("Erro ao atualizar atividade.");
+      console.log("Erro ao atualizar Atividade: ", error);
+      res.status(500).send("Erro ao atualizar Atividade.");
       return;
     }
 
-    res.send("Atividade atualizada com sucesso.");
+    if (desabilitado !== undefined) {
+      if (desabilitado) {
+        const sqlUpdateUsuarioAtividade = `UPDATE USUARIO_ATIVIDADE SET desabilitado = ${desabilitado} WHERE id_atividade = ?`;
+        connection.query(sqlUpdateUsuarioAtividade, [activityId], function (err, results, fields) {
+          if (err) {
+            console.log("Erro ao atualizar USUARIO_ATIVIDADE: ", err);
+          }
+        });
+      }
+    }
+
+    res.send("Atividade atualizado com sucesso.");
   });
 });
+
+// router.put('/:id', function (req, res, next) {
+//   const atividadeId = req.params.id;
+//   const { titulo, descricao, data } = req.body;
+
+//   connection.query('UPDATE ATIVIDADE SET titulo = ?, descricao = ?, data = ? WHERE id = ?', [titulo, descricao, data, atividadeId], function (error, results, fields) {
+//     if (error) {
+//       console.log("Erro ao atualizar atividade: ", error);
+//       res.status(500).send("Erro ao atualizar atividade.");
+//       return;
+//     }
+
+//     res.send("Atividade atualizada com sucesso.");
+//   });
+// });
 
 router.delete('/:id', function (req, res, next) {
   const atividadeId = req.params.id;

@@ -1,7 +1,31 @@
-import 'package:flutter/material.dart';
+// ignore_for_file: library_private_types_in_public_api
 
-class ActivityScreen extends StatelessWidget {
+import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
+
+class ActivityScreen extends StatefulWidget {
   const ActivityScreen({super.key});
+
+  @override
+  _ActivityScreenState createState() => _ActivityScreenState();
+}
+
+class _ActivityScreenState extends State<ActivityScreen> {
+  late bool _isMounted;
+  late List<Activity> _activity;
+
+  @override
+  void initState() {
+    super.initState();
+    _isMounted = true;
+    _activity = [];
+  }
+
+  @override
+  void dispose() {
+    _isMounted = false;
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -9,39 +33,233 @@ class ActivityScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Atividade'),
       ),
-      body: const Center(
-        child: SizedBox(
-          width: 600,
-          child: UserForm(),
+      body: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                SizedBox(
+                  width: 150,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      _openCreateActivity(context);
+                    },
+                    child: const Text('Criar Atividade', style: TextStyle(fontSize: 12)),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            _buildActivityDataTable(),
+          ],
         ),
       ),
     );
   }
+
+  DataRow _buildActivityDataRow(Activity activity) {
+    return DataRow(
+      cells: [
+        DataCell(Text(activity.id.toString())),
+        DataCell(Text(activity.titulo)),
+        DataCell(Text(activity.descricao)),
+        DataCell(Text(formatDate(activity.data))),
+        DataCell(
+          Row(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.edit),
+                onPressed: () {
+                  _openEditActivityForm(context, activity);
+                },
+              ),
+              IconButton(
+                icon: const Icon(Icons.delete),
+                onPressed: () {
+                  _deleteActivity(activity.id);
+                },
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildActivityDataTable() {
+    return FutureBuilder<List<Activity>>(
+      future: _fetchUsers(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const CircularProgressIndicator();
+        } else if (snapshot.hasError) {
+          return Text('Error: ${snapshot.error}');
+        } else {
+          return DataTable(
+            columns: const [
+              DataColumn(label: Text('ID')),
+              DataColumn(label: Text('titulo')),
+              DataColumn(label: Text('descricao')),
+              DataColumn(label: Text('data')),
+              DataColumn(label: Text('Ações')),
+            ],
+            rows: snapshot.data!.map((user) {
+              return _buildActivityDataRow(user);
+            }).toList(),
+          );
+        }
+      },
+    );
+  }
+
+  Future<List<Activity>> _fetchUsers() async {
+    try {
+      final response = await Dio().get('http://localhost:3000/school-activity/all-activity');
+      if (response.statusCode == 200 && _isMounted) {
+        final List<dynamic> responseData = response.data;
+        return responseData.map((json) => Activity(
+          id: json['id'],
+          titulo: json['titulo'] ?? '',
+          descricao: json['descricao'] ?? '',
+          data: json['data'] ?? '', 
+          desabilitado: json['desabilitado'] == 0,
+        )).toList();
+      } else {
+        throw Exception('Failed to load activity');
+      }
+    } catch (error) {
+      throw Exception('Failed to load activity: $error');
+    }
+  }
+
+  void _openCreateActivity(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Criar Atvidade'),
+          content: SizedBox(
+            width: 600,
+            height: 250,
+            child: UserForm(
+              onFormSubmitted: () {
+                setState(() {});
+              },
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _openEditActivityForm(BuildContext context, Activity activity) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Editar Atividade'),
+          content: SizedBox(
+            width: 600,
+            height: 250,
+            child: EditActivityForm(
+              activity: activity,
+              onFormSubmitted: () {
+                setState(() {});
+              },
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _deleteActivity(int activityId) async {
+    try {
+      final response = await Dio().put(
+        'http://localhost:3000/school-activity/$activityId',
+        data: {
+          'desabilitado': true, // Defina o campo desabilitado como true para desativar o usuário
+        },
+      );
+      if (response.statusCode == 200) {
+        // Desativação bem-sucedida, atualize a lista de usuários
+        setState(() {
+          for (var activity in _activity) {
+            if (activity.id == activityId) {
+              activity.desabilitado = true;
+            }
+          }
+        });
+      } else {
+        // Handle error
+      }
+    } catch (error) {
+      // Handle error
+    }
+  }
+
+
 }
 
-class UserForm extends StatelessWidget {
-  const UserForm({super.key});
+class UserForm extends StatefulWidget {
+  final Function onFormSubmitted;
+
+  const UserForm({super.key, required this.onFormSubmitted});
+
+  @override
+  _UserFormState createState() => _UserFormState();
+}
+
+class _UserFormState extends State<UserForm> {
+  final _formKey = GlobalKey<FormState>();
+  final _tituloController = TextEditingController();
+  final _descricaoController = TextEditingController();
+  final _dataController = TextEditingController();
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(20.0),
+    return Form(
+      key: _formKey,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           TextFormField(
+            controller: _tituloController,
             decoration: const InputDecoration(labelText: 'Título'),
+            validator: (value) {
+              if (value == null || value.isEmpty) {
+                return 'Por favor, insira o título';
+              }
+              return null;
+            },
           ),
           TextFormField(
+            controller: _descricaoController,
             decoration: const InputDecoration(labelText: 'Descrição'),
+            validator: (value) {
+              if (value == null || value.isEmpty) {
+                return 'Por favor, insira uma Descrição';
+              }
+              return null;
+            },
           ),
           TextFormField(
-            decoration: const InputDecoration(labelText: 'Data (AA/MM/DD)'),
+            controller: _dataController,
+            decoration: const InputDecoration(labelText: 'Data (AA-MM-DD)'),
+            validator: (value) {
+              if (value == null || value.isEmpty) {
+                return 'Por favor, insira uma data';
+              }
+              return null;
+            },
           ),
           const SizedBox(height: 20),
           ElevatedButton(
             onPressed: () {
-              // Ação
+              _submitForm(context);
             },
             child: const Text('Enviar'),
           ),
@@ -49,4 +267,168 @@ class UserForm extends StatelessWidget {
       ),
     );
   }
+
+  
+  void _submitForm(BuildContext context) async {
+    if (_formKey.currentState!.validate()) {
+      try {
+        final response = await Dio().post(
+          'http://localhost:3000/school-activity/',
+          data: {
+            'titulo': _tituloController.text,
+            'descricao': _descricaoController.text,
+            'data': _dataController.text,
+          },
+        );
+
+        if (response.statusCode == 201 && mounted) {
+          widget.onFormSubmitted();
+          // ignore: use_build_context_synchronously
+          Navigator.of(context).pop();
+        } else {
+          // Handle error
+        }
+      } catch (error) {
+        // Handle error
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _tituloController.dispose();
+    _descricaoController.dispose();
+    _dataController.dispose();
+    super.dispose();
+  }
+}
+
+class EditActivityForm extends StatefulWidget {
+  final Function onFormSubmitted;
+  final Activity activity;
+
+  const EditActivityForm({super.key, required this.onFormSubmitted, required this.activity});
+
+  @override
+  _EditActivityFormState createState() => _EditActivityFormState();
+}
+
+class _EditActivityFormState extends State<EditActivityForm> {
+  final _formKey = GlobalKey<FormState>();
+  final _tituloController = TextEditingController();
+  final _descricaoController = TextEditingController();
+  final _dataController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _tituloController.text = widget.activity.titulo;
+    _descricaoController.text = widget.activity.descricao;
+    _dataController.text = formatDate(widget.activity.data);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Form(
+      key: _formKey,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          TextFormField(
+            controller: _tituloController,
+            decoration: const InputDecoration(labelText: 'Título'),
+            validator: (value) {
+              if (value == null || value.isEmpty) {
+                return 'Por favor, insira o título';
+              }
+              return null;
+            },
+          ),
+          TextFormField(
+            controller: _descricaoController,
+            decoration: const InputDecoration(labelText: 'Descrição'),
+            validator: (value) {
+              if (value == null || value.isEmpty) {
+                return 'Por favor, insira a descrição';
+              }
+              return null;
+            },
+          ),
+          TextFormField(
+            controller: _dataController,
+            decoration: const InputDecoration(labelText: 'Data (AA-MM-DD)'),
+            validator: (value) {
+              if (value == null || value.isEmpty) {
+                return 'Por favor, insira uma data';
+              }
+              return null;
+            },
+          ),
+          const SizedBox(height: 20),
+          ElevatedButton(
+            onPressed: () {
+              _submitEditForm(context);
+            },
+            child: const Text('Concluir'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _submitEditForm(BuildContext context) async {
+    if (_formKey.currentState!.validate()) {
+      try {
+        final response = await Dio().put(
+          'http://localhost:3000/school-activity/${widget.activity.id}',
+          data: {
+            'titulo': _tituloController.text,
+            'descricao': _descricaoController.text,
+            'data': _dataController.text,
+          },
+        );
+
+        if (response.statusCode == 200) {
+          widget.onFormSubmitted();
+          // ignore: use_build_context_synchronously
+          Navigator.of(context).pop();
+        } else {
+          // Handle error
+        }
+      } catch (error) {
+        // Handle error
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _tituloController.dispose();
+    _descricaoController.dispose();
+    _dataController.dispose();
+    super.dispose();
+  }
+}
+
+class Activity {
+  final int id;
+  final String titulo;
+  final String descricao;
+  final String data;
+  bool desabilitado;
+
+  Activity({
+    required this.id,
+    required this.titulo,
+    required this.descricao,
+    required this.data,
+    required this.desabilitado,
+  });
+}
+
+
+String formatDate(String dateString) {
+  DateTime dateTime = DateTime.parse(dateString);
+  String formattedDate = "${dateTime.year.toString()}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')}";
+  return formattedDate;
 }
