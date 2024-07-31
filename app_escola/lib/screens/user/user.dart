@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class UserScreen extends StatefulWidget {
   const UserScreen({super.key});
@@ -14,11 +15,23 @@ class _UserScreenState extends State<UserScreen> {
   late bool _isMounted;
   late List<User> _users;
 
+  String? jwt;
+  String? role;
+
   @override
   void initState() {
     super.initState();
+    _getStoredValues();
     _isMounted = true;
     _users = [];
+  }
+
+  Future<void> _getStoredValues() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      jwt = prefs.getString('token');
+      role = prefs.getString('role');
+    });
   }
 
   @override
@@ -72,7 +85,7 @@ class _UserScreenState extends State<UserScreen> {
               IconButton(
                 icon: const Icon(Icons.edit),
                 onPressed: () {
-                  _openEditUserForm(context, user);
+                  _openEditUserForm(context, user, jwt!, role!); // Passa jwt e role
                 },
               ),
               IconButton(
@@ -115,7 +128,13 @@ class _UserScreenState extends State<UserScreen> {
 
   Future<List<User>> _fetchUsers() async {
     try {
-      final response = await Dio().get('http://localhost:3000/users/all-users');
+      final dio = Dio();
+      final options = Options(headers: {'jwt': '$jwt'});
+      final response = await dio.get(
+        'http://localhost:3000/users/all-users?roleUser=$role',
+        options: options,
+      );
+
       if (response.statusCode == 200 && _isMounted) {
         final List<dynamic> responseData = response.data;
         return responseData.map((json) => User(
@@ -134,27 +153,27 @@ class _UserScreenState extends State<UserScreen> {
   }
 
   void _openCreateUserForm(BuildContext context) {
-  showDialog(
-    context: context,
-    builder: (BuildContext context) {
-      return AlertDialog(
-        title: const Text('Criar Usuário'),
-        content: SizedBox(
-          width: 600,
-          height: 250,
-          child: UserForm(
-            onFormSubmitted: () {
-              setState(() {});
-              Navigator.of(context).pop();
-            },
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Criar Usuário'),
+          content: SizedBox(
+            width: 600,
+            height: 250,
+            child: UserForm(
+              onFormSubmitted: () {
+                setState(() {});
+                Navigator.of(context).pop();
+              },
+            ),
           ),
-        ),
-      );
-    },
-  );
-}
+        );
+      },
+    );
+  }
 
-  void _openEditUserForm(BuildContext context, User user) {
+  void _openEditUserForm(BuildContext context, User user, String jwt, String role) {
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -162,8 +181,11 @@ class _UserScreenState extends State<UserScreen> {
           title: const Text('Editar Usuário'),
           content: SizedBox(
             width: 600,
+            height: 250,
             child: EditUserForm(
               user: user,
+              jwt: jwt,
+              role: role,
               onFormSubmitted: () {
                 setState(() {});
               },
@@ -176,14 +198,15 @@ class _UserScreenState extends State<UserScreen> {
 
   void _deleteUser(int userId) async {
     try {
-      final response = await Dio().put(
-        'http://localhost:3000/users/$userId',
-        data: {
-          'desabilitado': true, // Defina o campo desabilitado como true para desativar o usuário
-        },
+      final dio = Dio();
+      final options = Options(headers: {'jwt': '$jwt'});
+      final response = await dio.put(
+        'http://localhost:3000/users/$userId?roleUser=$role',
+        data: {'desabilitado': true},
+        options: options,
       );
+
       if (response.statusCode == 200) {
-        // Desativação bem-sucedida, atualize a lista de usuários
         setState(() {
           for (var user in _users) {
             if (user.id == userId) {
@@ -300,8 +323,10 @@ class _UserFormState extends State<UserForm> {
 class EditUserForm extends StatefulWidget {
   final Function onFormSubmitted;
   final User user;
+  final String jwt;
+  final String role;
 
-  const EditUserForm({super.key, required this.onFormSubmitted, required this.user});
+  const EditUserForm({super.key, required this.onFormSubmitted, required this.user, required this.jwt, required this.role});
 
   @override
   _EditUserFormState createState() => _EditUserFormState();
@@ -374,13 +399,16 @@ class _EditUserFormState extends State<EditUserForm> {
   void _submitEditForm(BuildContext context) async {
     if (_formKey.currentState!.validate()) {
       try {
-        final response = await Dio().put(
-          'http://localhost:3000/users/${widget.user.id}',
+        final dio = Dio();
+        final options = Options(headers: {'jwt': '${widget.jwt}'}); // Adiciona o JWT ao cabeçalho
+        final response = await dio.put(
+          'http://localhost:3000/users/${widget.user.id}?roleUser=${widget.role}',
           data: {
             'nome': _nameController.text,
             'email': _emailController.text,
             'password': _passwordController.text,
           },
+          options: options, // Passa as opções com o JWT para a requisição
         );
 
         if (response.statusCode == 200) {

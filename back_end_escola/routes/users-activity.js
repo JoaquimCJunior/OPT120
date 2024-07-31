@@ -1,9 +1,36 @@
 var express = require('express');
 var router = express.Router();
 var connection = require('../connection/mysql_connection.js');
+var jwt = require('jsonwebtoken');
+var bcrypt = require('bcrypt');
 
-router.post('/', function (req, res, next) {
+const JWT_SECRET_KEY = '2f5b43295ff58fb8615bbd72ed4c145dd89d9ab17637dfaf1831b850e57cf72b'; 
+
+// Middleware para verificar token JWT
+function verifyToken(req, res, next) {
+  const token = req.headers['jwt'];
+
+  if (!token) {
+    return res.status(403).send("Token não fornecido.");
+  }
+
+  jwt.verify(token, JWT_SECRET_KEY, function(err, decoded) {
+    if (err) {
+      return res.status(401).send("Token inválido.");
+    }
+
+    req.user = decoded;
+    next();
+  });
+}
+
+router.post('/', verifyToken, function (req, res, next) {
   const { id_usuario, id_atividade, data, nota } = req.body;
+  const { roleUser } = req.query;
+
+  if (roleUser !== 'PROFESSOR') {
+    return res.status(401).send("Usuário sem permissão!");
+  }
 
   connection.query('INSERT INTO USUARIO_ATIVIDADE (id_usuario, id_atividade, data, nota) VALUES (?, ?, ?, ?)', [id_usuario, id_atividade, data, nota], function (error, results, fields) {
     if (error) {
@@ -16,7 +43,13 @@ router.post('/', function (req, res, next) {
   });
 });
 
-router.get('/all-users-activity', function (req, res, next) {
+router.get('/all-users-activity', verifyToken, function (req, res, next) {
+  const { roleUser } = req.query;
+
+  if (roleUser !== 'PROFESSOR') {
+    return res.status(401).send("Usuário sem permissão!");
+  }
+
   connection.query('SELECT * FROM USUARIO_ATIVIDADE WHERE desabilitado = FALSE', function (error, results, fields) {
     if (error) {
       console.log("Erro ao buscar usuários: ", error);
@@ -27,8 +60,13 @@ router.get('/all-users-activity', function (req, res, next) {
 
 });
 
-router.get('/:id', function (req, res, next) {
+router.get('/:id', verifyToken, function (req, res, next) {
   const userActivityId = req.params.id;
+  const { roleUser } = req.query;
+
+  if (roleUser !== 'PROFESSOR') {
+    return res.status(401).send("Usuário sem permissão!");
+  }
 
   connection.query('SELECT * FROM USUARIO_ATIVIDADE WHERE id = ?', [userActivityId], function (error, results, fields) {
     if (error) {
@@ -46,7 +84,13 @@ router.get('/:id', function (req, res, next) {
   });
 });
 
-router.put('/:id', function (req, res, next) {
+router.put('/:id', verifyToken, function (req, res, next) {
+  const { roleUser } = req.query;
+
+  if (roleUser !== 'PROFESSOR') {
+    return res.status(401).send("Usuário sem permissão!");
+  }
+
   const userActivityId = req.params.id;
   const { id_usuario, id_atividade, data, nota, desabilitado } = req.body;
 
@@ -98,8 +142,13 @@ router.put('/:id', function (req, res, next) {
   });
 });
 
-router.delete('/:id', function (req, res, next) {
+router.delete('/:id', verifyToken, function (req, res, next) {
   const userActivityId = req.params.id;
+  const { roleUser } = req.query;
+
+  if (roleUser !== 'PROFESSOR') {
+    return res.status(401).send("Usuário sem permissão!");
+  }
 
   connection.query('DELETE FROM USUARIO_ATIVIDADE WHERE id = ?', [userActivityId], function (error, results, fields) {
     if (error) {

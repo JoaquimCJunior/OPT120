@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ActivityScreen extends StatefulWidget {
   const ActivityScreen({super.key});
@@ -14,9 +15,13 @@ class _ActivityScreenState extends State<ActivityScreen> {
   late bool _isMounted;
   late List<Activity> _activity;
 
+  String? jwt;
+  String? role;
+
   @override
   void initState() {
     super.initState();
+    _getStoredValues();
     _isMounted = true;
     _activity = [];
   }
@@ -25,6 +30,14 @@ class _ActivityScreenState extends State<ActivityScreen> {
   void dispose() {
     _isMounted = false;
     super.dispose();
+  }
+
+  Future<void> _getStoredValues() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      jwt = prefs.getString('token');
+      role = prefs.getString('role');
+    });
   }
 
   @override
@@ -45,7 +58,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
                   width: 150,
                   child: ElevatedButton(
                     onPressed: () {
-                      _openCreateActivity(context);
+                      _openCreateActivity(context, jwt!, role!);
                     },
                     child: const Text('Criar Atividade', style: TextStyle(fontSize: 12)),
                   ),
@@ -73,7 +86,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
               IconButton(
                 icon: const Icon(Icons.edit),
                 onPressed: () {
-                  _openEditActivityForm(context, activity);
+                  _openEditActivityForm(context, activity, jwt!, role!);
                 },
               ),
               IconButton(
@@ -117,7 +130,13 @@ class _ActivityScreenState extends State<ActivityScreen> {
 
   Future<List<Activity>> _fetchUsers() async {
     try {
-      final response = await Dio().get('http://localhost:3000/school-activity/all-activity');
+      final dio = Dio();
+      final options = Options(headers: {'jwt': '$jwt'});
+      final response = await dio.get(
+        'http://localhost:3000/school-activity/all-activity?roleUser=$role',
+        options: options,
+      );
+      
       if (response.statusCode == 200 && _isMounted) {
         final List<dynamic> responseData = response.data;
         return responseData.map((json) => Activity(
@@ -135,7 +154,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
     }
   }
 
-  void _openCreateActivity(BuildContext context) {
+  void _openCreateActivity(BuildContext context, String jwt, String role) {
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -145,6 +164,8 @@ class _ActivityScreenState extends State<ActivityScreen> {
             width: 600,
             height: 250,
             child: UserForm(
+              jwt: jwt,
+              role: role,
               onFormSubmitted: () {
                 setState(() {});
               },
@@ -155,7 +176,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
     );
   }
 
-  void _openEditActivityForm(BuildContext context, Activity activity) {
+  void _openEditActivityForm(BuildContext context, Activity activity, String jwt, String role) {
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -166,6 +187,8 @@ class _ActivityScreenState extends State<ActivityScreen> {
             height: 250,
             child: EditActivityForm(
               activity: activity,
+              jwt: jwt,
+              role: role,
               onFormSubmitted: () {
                 setState(() {});
               },
@@ -178,14 +201,15 @@ class _ActivityScreenState extends State<ActivityScreen> {
 
   void _deleteActivity(int activityId) async {
     try {
-      final response = await Dio().put(
-        'http://localhost:3000/school-activity/$activityId',
-        data: {
-          'desabilitado': true, // Defina o campo desabilitado como true para desativar o usuário
-        },
+      final dio = Dio();
+      final options = Options(headers: {'jwt': '$jwt'});
+      final response = await dio.put(
+        'http://localhost:3000/school-activity/$activityId?roleUser=$role',
+        data: {'desabilitado': true},
+        options: options,
       );
+
       if (response.statusCode == 200) {
-        // Desativação bem-sucedida, atualize a lista de usuários
         setState(() {
           for (var activity in _activity) {
             if (activity.id == activityId) {
@@ -206,8 +230,10 @@ class _ActivityScreenState extends State<ActivityScreen> {
 
 class UserForm extends StatefulWidget {
   final Function onFormSubmitted;
+  final String jwt;
+  final String role;
 
-  const UserForm({super.key, required this.onFormSubmitted});
+  const UserForm({super.key, required this.onFormSubmitted, required this.jwt, required this.role});
 
   @override
   _UserFormState createState() => _UserFormState();
@@ -272,13 +298,15 @@ class _UserFormState extends State<UserForm> {
   void _submitForm(BuildContext context) async {
     if (_formKey.currentState!.validate()) {
       try {
+        final options = Options(headers: {'jwt': '${widget.jwt}'});
         final response = await Dio().post(
-          'http://localhost:3000/school-activity/',
+          'http://localhost:3000/school-activity/?roleUser=${widget.role}',
           data: {
             'titulo': _tituloController.text,
             'descricao': _descricaoController.text,
             'data': _dataController.text,
           },
+          options: options,
         );
 
         if (response.statusCode == 201 && mounted) {
@@ -306,8 +334,10 @@ class _UserFormState extends State<UserForm> {
 class EditActivityForm extends StatefulWidget {
   final Function onFormSubmitted;
   final Activity activity;
+  final String jwt;
+  final String role;
 
-  const EditActivityForm({super.key, required this.onFormSubmitted, required this.activity});
+  const EditActivityForm({super.key, required this.onFormSubmitted, required this.activity, required this.jwt, required this.role});
 
   @override
   _EditActivityFormState createState() => _EditActivityFormState();
@@ -379,13 +409,15 @@ class _EditActivityFormState extends State<EditActivityForm> {
   void _submitEditForm(BuildContext context) async {
     if (_formKey.currentState!.validate()) {
       try {
+        final options = Options(headers: {'jwt': '${widget.jwt}'});
         final response = await Dio().put(
-          'http://localhost:3000/school-activity/${widget.activity.id}',
+          'http://localhost:3000/school-activity/${widget.activity.id}?roleUser=${widget.role}',
           data: {
             'titulo': _tituloController.text,
             'descricao': _descricaoController.text,
             'data': _dataController.text,
           },
+          options: options, 
         );
 
         if (response.statusCode == 200) {

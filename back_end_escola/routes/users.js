@@ -1,33 +1,76 @@
 var express = require('express');
 var router = express.Router();
-var connection = require('../connection/mysql_connection.js')
+var connection = require('../connection/mysql_connection.js');
+var jwt = require('jsonwebtoken');
+var bcrypt = require('bcrypt');
+
+const JWT_SECRET_KEY = '2f5b43295ff58fb8615bbd72ed4c145dd89d9ab17637dfaf1831b850e57cf72b'; 
+
+// Middleware para verificar token JWT
+function verifyToken(req, res, next) {
+  const token = req.headers['jwt'];
+
+  if (!token) {
+    return res.status(403).send("Token não fornecido.");
+  }
+
+  jwt.verify(token, JWT_SECRET_KEY, function(err, decoded) {
+    if (err) {
+      return res.status(401).send("Token inválido.");
+    }
+
+    req.user = decoded;
+    next();
+  });
+}
 
 router.post('/', function (req, res, next) {
   const { nome, email, password } = req.body;
 
-  connection.query('INSERT INTO USUARIO (nome, email, password) VALUES (?, ?, ?)', [nome, email, password], function (error, results, fields) {
-    if (error) {
-      console.log("Erro ao criar usuário: ", error);
+  bcrypt.hash(password, 256, function(err, hash) {
+    if (err) {
+      console.log("Erro ao criptografar senha: ", err);
       res.status(500).send("Erro ao criar usuário.");
       return;
     }
 
-    res.status(201).send("Usuário criado com sucesso.");
+    connection.query('INSERT INTO USUARIO (nome, email, password, role) VALUES (?, ?, ?, ?)', [nome, email, hash, 'ALUNO'], function (error, results, fields) {
+      if (error) {
+        console.log("Erro ao criar usuário: ", error);
+        res.status(500).send("Erro ao criar usuário.");
+        return;
+      }
+
+      res.status(201).send("Usuário criado com sucesso.");
+    });
   });
 });
 
-router.get('/all-users', function (req, res, next) {
+router.get('/all-users', verifyToken, function (req, res, next) {
+  const { roleUser } = req.query;
+
+  if (roleUser !== 'PROFESSOR') {
+    return res.status(401).send("Usuário sem permissão!");
+  }
+
   connection.query('SELECT * FROM USUARIO WHERE desabilitado = FALSE', function (error, results, fields) {
-    if(error) {
+    if (error) {
       console.log("Erro ao buscar usuários: ", error);
-      res.status(500).send("Erro ao buscar usuários.");
+      return res.status(500).send("Erro ao buscar usuários.");
     }
+    
     res.send(results);
   });
 });
 
-router.get('/:id', function (req, res, next) {
+
+router.get('/:id', verifyToken, function (req, res, next) {
   const userId = req.params.id;
+  const { roleUser } = req.query;
+
+  if (roleUser !== 'ALUNO' && roleUser !== 'PROFESSOR') {
+    return res.status(401).send("Usuário sem permissão!");
+  }
 
   connection.query('SELECT * FROM USUARIO WHERE id = ?', [userId], function (error, results, fields) {
     if (error) {
@@ -35,7 +78,6 @@ router.get('/:id', function (req, res, next) {
       res.status(500).send("Erro ao buscar usuário.");
       return;
     }
-
     if (results.length === 0) {
       res.status(404).send("Usuário não encontrado.");
       return;
@@ -45,9 +87,15 @@ router.get('/:id', function (req, res, next) {
   });
 });
 
-router.put('/:id', function (req, res, next) {
+router.put('/:id', verifyToken, function (req, res, next) {
   const userId = req.params.id;
-  const { nome, email, password, desabilitado } = req.body;
+  const { roleUser } = req.query;
+
+  const { nome, email, password, role, desabilitado } = req.body;
+
+  if (roleUser !== 'ALUNO' && roleUser !== 'PROFESSOR') {
+    return res.status(401).send("Usuário sem permissão!");
+  }
 
   let updates = [];
   let params = [];
@@ -65,6 +113,11 @@ router.put('/:id', function (req, res, next) {
   if (password) {
     updates.push('password = ?');
     params.push(password);
+  }
+
+  if (role) {
+    updates.push('role = ?');
+    params.push(role);
   }
 
   if (desabilitado !== undefined) {
@@ -103,8 +156,13 @@ router.put('/:id', function (req, res, next) {
   });
 });
 
-router.delete('/:id', function (req, res, next) {
+router.delete('/:id', verifyToken, function (req, res, next) {
   const userId = req.params.id;
+  const { roleUser } = req.query;
+
+  if (roleUser !== 'ALUNO' && roleUser !== 'PROFESSOR') {
+    return res.status(401).send("Usuário sem permissão!");
+  }
 
   connection.query('DELETE FROM USUARIO WHERE id = ?', [userId], function (error, results, fields) {
     if (error) {
